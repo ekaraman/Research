@@ -1,0 +1,1 @@
+Usage: opens and displays previously drawn sketch in draw panel
