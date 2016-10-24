@@ -101,6 +101,7 @@ grid = triu(grid);
 dist=zeros(strokeSize,strokeSize);
 
 %Euclidian distance from between middle points of strokes
+%KULLANILMIYOR---BEGIN
 centers = zeros(strokeSize,2);
  for i = 1 : strokeSize
      middlePoint1 = ceil(sketchXml(1,i).npts / 2);
@@ -117,6 +118,7 @@ centers = zeros(strokeSize,2);
          end
      end
  end
+ %KULLANILMIYOR---END
 
 %Plot coordinates
 figNo = 1;
