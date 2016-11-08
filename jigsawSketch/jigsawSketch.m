@@ -1,247 +1,179 @@
-%Read sketh xml data and get idm features.
-clear all;
+function [D, S] = jigsawSketch (jSize, smoothCost, dataFeatCost, featDistThrs, dispVarThrs)
+
+%clear all;
+
 % Set image and log directories
 date = datestr(now,30);
 logFile = ['log_', date, '.txt'];
-logDir = 'C:\Users\KARAMAN\Google Drive\RESEARCH\Jigsaw_Epitome\Jigsaw_Implementation\Logs';
+logDir = 'C:\Users\KARAMAN\Google Drive\RESEARCH\myResearch\jigsawLogs';
 
 %Open log file
 fileID = fopen([logDir,'\',logFile],'w');
 fprintf(fileID,'%s\n',date);
 
-jigsawPath = 'C:\Users\KARAMAN\Google Drive\RESEARCH\Jigsaw_Sketch\JigsawResult';
-jigsawImage = 'C:\Users\KARAMAN\Google Drive\RESEARCH\Jigsaw_Sketch\JigsawImage';
-dataPath = 'C:\Users\KARAMAN\Google Drive\RESEARCH\Jigsaw_Sketch\TestData2';
+%Sketch xml file is in this directory
+%dataPath = 'C:\Users\KARAMAN\Google Drive\RESEARCH\myResearch\Research\jigsawSketch\testData';
+dataPath = 'C:\Users\KARAMAN\Google Drive\RESEARCH\myResearch\Research\jigsawSketch\testData2';
+%dataPath = 'C:\Users\KARAMAN\Google Drive\RESEARCH\myResearch\Research\jigsawSketch\testData3';
+currentPath = pwd;
+%Read stroke meta data from xml file
 fileXml = [dataPath,'\*.xml'];
 filedir = rdir(fileXml);
 sketchXml = read_sketch(filedir(1,1).name);
 [row, strokeSize] = size(sketchXml);
 feat =zeros(strokeSize,720);
 
-
-j = 1;
+%Calculate idm features of each stroke 
 for i = 1 : strokeSize
-  %feat(i,:) = scontext(sketchXml(1,i), 3, 12, 50);
-  %feat(i,:) = image_zernike(sketchXml(1,i), 12);
-  if (i ~= 28)
-    feat(j,:)=idm(sketchXml(1,j),50,10,4);
-    j = j + 1;
-  end
-  %feat(i,:)= feat(i,:) * 1000;
+    feat(i,:)=idm(sketchXml(1,i),50,10,4);
 end
 
-nrow = size (feat,1);
-ncol = size (feat,2);
-featSize = nrow;
+featVectorSize =  size (feat,2);
 
-j1D = 3;
-jSize = [j1D, j1D, ncol];
-%Initialize jigsaw mean
-jMean = zeros(jSize) - 1;
+%Set Jigsaw size
+j1D = jSize;
 
-featMean = zeros (1,ncol);
-featStd = zeros (1,ncol);
-featVar = zeros (1,ncol);
+%Initialize jMean
+[ featMean, featStd, featVar, jMean ] = initJigsawMean( featVectorSize, feat, j1D );
 
-for i = 1 : ncol
-    featMean (1,i) = mean2(feat(:,i));
-    featStd (1,i) = std2 (feat(:,i));
-    featVar (1,i)= featStd (1,i) ^ 2;
-end
+%To allow elements of jigsaw unused, I keep the mean of idm features of 
+%all strokes. If a jigsaw element is unused, I assign this value.
+jMeanFirst = jMean;
 
-%Initialize Jigsaw Mean
-for i =  1 : j1D
-    for j =  1 : j1D
-        for k = 1 : ncol
-            done = false;
-             while (~done)
-                 jMean(i,j,k) = random('norm', featMean(1,k), featStd(1,k));
-                 jMean(i,j,k) = 0;
-                 if (jMean(i,j,k) >= 0)
-                     done = true;
-                 end
-             end
-        end
-    end
-end
+%Get centers of strokes
+centers = getCenters( strokeSize, sketchXml );
 
-jMeanFirst(i,j,k) = jMean(i,j,k);
-
-% %Set fully connected grid
-grid = int32((ones(nrow,nrow)) * 1);
-
-%TEST%
-grid = int32((ones(nrow,nrow)) * 0);
-%TEST%
-
-grid(1:nrow + 1:nrow * nrow) = 0;
-%Set 4 connected grid of image pixels. 4 connected grid defined in
-%Isize1DxIsize1D matrix (eg. if image size is 128x128, 4 conected grid 
-%defined in 16384x16384 matrix) because alpha expansion grap cut code
-%define neigberhood of pixels as this way.
-                     %# Get the matrix size
-% size=2;
-% diagVec1 = repmat([ones(size-1,1); 0],size,1);    %# Make the first diagonal vector
-%                                             %# (for horizontal connections)
-% diagVec1 = diagVec1(1:end-1);               %# Remove the last value
-% diagVec2 = ones(size*(size-1),1);                 %# Make the second diagonal vector
-%                                             %#   (for vertical connections)
-% adj = diag(diagVec1,1)+...                  %# Add the diagonals to a zero matrix
-%       diag(diagVec2,size);
-% adj = adj+adj.';                            %# Add the matrix to a transposed
-%                                             %# copy of itself to make it
-%                                             %# symmetric
-%Get upper triangular part of adj matrix 
-
-grid = triu(grid);
-%Set weights of neighbourhood edges
-%w = 1000;
-%grid = grid .* w;
-
-dist=zeros(strokeSize,strokeSize);
-
-%Euclidian distance from between middle points of strokes
-%KULLANILMIYOR---BEGIN
-centers = zeros(strokeSize,2);
- for i = 1 : strokeSize
-     middlePoint1 = ceil(sketchXml(1,i).npts / 2);
-     x1 = sketchXml(1,i).coords(middlePoint1,1);
-     y1 = sketchXml(1,i).coords(middlePoint1,2);
-     centers(i,1) = x1;
-     centers(i,2) = y1;
-     for j = 1 : strokeSize
-         if ((i ~= j) && (j > i))
-             middlePoint2 = ceil(sketchXml(1,j).npts / 2);
-             x2 = sketchXml(1,j).coords(middlePoint2,1);
-             y2 = sketchXml(1,j).coords(middlePoint2,2);
-             dist(i,j) = sqrt((x2 - x1)^2 + (y2 - y1)^2);
-         end
-     end
- end
- %KULLANILMIYOR---END
-
-%Plot coordinates
+%Draw strokes on canvas
 figNo = 1;
-%axis off;
-set(gca,'visible','off')
-hFig = figure(figNo);
-figNo = figNo + 1;
-set(hFig,'Position',[0, 0, 700, 1300]);
-axis([0 1300 -700 0]);
-figure(hFig);
-hold on;
-for i = 1 : size(sketchXml,2)
-    plot(sketchXml(1,i).coords(:,1), -sketchXml(1,i).coords(:,2),'LineWidth',3);
-    txt1 = int2str(i);
-    text((centers(i,1)+15),-centers(i,2)-5,txt1,'FontSize',11,'FontWeight','bold');
-end
-hold off;
-%close(hFig);
+figNo = drawCanvas( sketchXml, centers, figNo );
 
-%find nodes in searchBox for each nodes and set displacement for each node
-%in search box.
-displacement = zeros (strokeSize, strokeSize,2);
-for i = 1 : strokeSize
-    for j = 1 : strokeSize
-        %if ((i ~= j) && (j > i))
-        if ((i ~= j))
-            xq = centers (j,1);
-            yq = centers (j,2);   
-            displacement(i,j,1) = centers (j,1) - centers(i,1);
-            displacement(i,j,2) = centers (j,2) - centers(i,2);
-        end
-    end
-end
+%Get displacement between strokes
+displacement = getDisplacement( strokeSize, centers );
 
-%dist = int32(floor(dist .* 1000));
-%Find distance between strokes.
-%Set weights of neighbourhood edges
-%w = 100;
+%Find euclidean distance of IDM fetures of strokes
+featDist = idmDistance(strokeSize, feat, featVectorSize);
 
-% G = graph(double(grid));
-% plot(G);
+%Set threshold for feature distance
+tFeat = featDistThrs;
+[row, col] = find(featDist <= tFeat & featDist >= 0);
+simSize = size(row,1);
 
-%Set variance matrix between each node
-checkDispVar = zeros (strokeSize,strokeSize);
+%Find displacement variance among similar strokes and set smooothness cost
+%on grid.
+groups = findSimStrokes( strokeSize, row, col, simSize, displacement, dispVarThrs );
+
+%Update centers to enforce compatibility
 updatedCenters = centers;
-connected = 0;
-connection = zeros(1,1,1,1,1,1,1,1);
-for i = 1 : strokeSize
-    i
-    for j =  1 : strokeSize
-        similar = zeros(1,1);
-        if (i ~= j)
-            disp1 = displacement(i,j,:);
-            for k =  i+1 : strokeSize
-                for m = 1 : strokeSize
-                    if ~((i == k) && (j == m)) && (k ~= m)
-                        disp2 = displacement(k,m,:);
-                        tmpVar = var([disp1; disp2]);
-                        meanVar = sum(tmpVar,3)/2;
-                        if (meanVar < 50)
-                            featDist = zeros(1,2);
-                            featDist(1) = sqrt(sum(((feat(i,:) - feat(k,:)).^2),2));
-                            featDist(2) = sqrt(sum(((feat(j,:) - feat(m,:)).^2),2));
-                            meanFeatDist = mean(featDist,2);
-                            varFeatDist = var(featDist);
-                            if (meanFeatDist <= 6) && (varFeatDist < 2)
-                                if (j > i) && (m > k)
-                                    flag = 0;
-                                    if (connected > 0)
-                                        flag = checkConnection(i,j,k,m,connection);
-                                    end
-                                    if (flag == 0)
-                                        connected = connected + 1;
-                                        connection(connected,1) = i;
-                                        connection(connected,2) = j;
-                                        connection(connected,3) = k;
-                                        connection(connected,4) = m;
-                                        connection(connected,5) = disp1(:,:,1);
-                                        connection(connected,6) = disp1(:,:,2);
-                                        connection(connected,7) = disp2(:,:,1);
-                                        connection(connected,8) = disp2(:,:,2);
-                                        connection(connected,9) = 0;
-                                    end   
-                                end
-                            end
-                        end
-                    end
-                end
+updatedDisplacement = displacement;
+groupSize = size(groups,1);
+
+%Define graph
+graph = zeros(strokeSize,strokeSize);
+circleGroup = [];
+
+for i = 1 : groupSize
+    
+    %Get Positions
+    s1 = groups(i,1);
+    s2 = groups(i,2);
+    s3 = groups(i,3);
+    s4 = groups(i,4);
+    
+    %Find displacement (x and y) between s1 and s2
+    disp1x = updatedDisplacement(s1,s2,1);
+    disp1y = updatedDisplacement(s1,s2,2);
+    
+    %Find displacement (x and y) between s3 and s4
+    disp2x = updatedDisplacement(s3,s4,1);
+    disp2y = updatedDisplacement(s3,s4,2);
+    
+    %Get s4 position before update
+    tmpX = updatedCenters(s4,1);
+    tmpY = updatedCenters(s4,2);
+    
+    %Connect group elements
+    %s1 ve s2yi burada birbirine baðlýyorum çünkü bunlarda connected
+    %componnent hesaplerken göz  önüne alýnmasý gerekiyor. Bunun nedeni 
+    %s4'ün centeriný update ettikten sonra s4e baðlý tüm connected
+    %componnetleri ayný displacement deðeri kadar kaydýrýyorum. Eðer
+    %bunlarý baðlamazsam ve s1 ve s2den biri s4ün connected componenti ise
+    %ve diðeri deðilse connected component içindeki node da displacement
+    %kadar kaydýrýldýðý için s1,s2 ve s3,s4 displacement deðerinin eþitliði
+    %bozuluyor. Bu durumu önlemek için ilk önce burada baðlantý iþini
+    %yapýyorum.
+    graph(groups(i,1),groups(i,2)) = 1;
+    graph(groups(i,2),groups(i,1)) = 1;
+    %graphconncomp fonksiyonu sparse matrix kullanýyor.
+    sgraph = sparse(graph);
+    %Graphdaki connected componnetleri buluyorum.
+    [S, C] = graphconncomp(sgraph);
+    %s4ün connected komponentlerini buluyorum.
+    compNu = C(s4);
+    comps =  find(C==C(s4));
+    %s3 connected komponentte var mý? Bu çok önemli. eðer varsa s3 ü
+    %hareket ettirmeden diðer component elemanlarýnýn hepsini kaydýrdýðým
+    %için s3 ile baðlý olan nodelarýn displacement elþitlikleri bozuluyor.
+    %Eðer böyle bir durum varsa displacement eþitliðini saðlamak mümkün
+    %olmadýðýndan bu benzer gruplarý dikkate elmýyorum. Yani baðlamýyorum
+    %birbirlerine.
+    check1 = any (comps==s3);
+    %Displacement deðerleri eþitmi ona bakýyorum. eþitse hiçbirþey
+    %yapmýyorum. Eþit deðilse merkez kaydýrma iþelemini yapýyorum.
+    check2 = (disp1x == disp2x) && (disp1y == disp2y);
+    
+    %Eðer s3 connected komponentte yoksa ve displacement deðerleri
+    %farklýysa s4ün ve connected componentlerinin poziyon bilgilerini
+    %displacement deðeri kadar update ediyorum.
+    if ~((disp1x == disp2x) && (disp1y == disp2y)) && ~check1
+        updatedCenters(s4,1) = updatedCenters(s3,1) + disp1x;
+        updatedCenters(s4,2) = updatedCenters(s3,2) + disp1y;
+        graph(groups(i,3),groups(i,4)) = 1;
+        graph(groups(i,4),groups(i,3)) = 1;
+        %Find delta of old and updated distance of s4
+        deltaX = updatedCenters(s4,1) - tmpX;
+        deltaY = updatedCenters(s4,2) - tmpY;
+        for j = 1 : size(comps,2)
+            if (comps(j) ~= s4)
+                updatedCenters(comps(j),1) = updatedCenters(comps(j),1) + deltaX;
+                updatedCenters(comps(j),2) = updatedCenters(comps(j),2) + deltaY;
             end
         end
+    %Eðer displacementlar eþitse birþey yapmýyorum, sadece s3 v s4ü
+    %baðlýyorum. s1 ve s2yi yukarýda baðlamýþtým zaten.
+    elseif (disp1x == disp2x) && (disp1y == disp2y)
+        graph(groups(i,3),groups(i,4)) = 1;
+        graph(groups(i,4),groups(i,3)) = 1;
     end
+    %Eðer s3 ve s4 connected ise baðlantýsýný kesiyorum ve offset uygulama
+    %iþlemi bittikten sonra bu satýrdaki grouplarý çýkarmak için satýr
+    %bilgilerini tutuyorum.
+    if (check1) && ~(check2)
+        graph(groups(i,1),groups(i,2)) = 0;
+        graph(groups(i,2),groups(i,1)) = 0;
+        circleGroup = [circleGroup i]; 
+    end
+    
+    %Displacmentlarý update ediyorum.
+    updatedDisplacement = getDisplacement( strokeSize, updatedCenters );
+    
 end
 
-%Get similar groups
-groupCluster = getGroups(connection);
+%s3 ve s4 baðlý olduðu için offset uygulayamadýðým satýrlarý siliyorum.
+[groups,ps] = removerows(groups,'ind',circleGroup);
+%Kontrol
+flag = 0;
+flag = checkUpdatedDisplacement(updatedDisplacement, groups);
+if (flag == 1)
+    disp('Cannot update displacement properly... Check the code...')
+    return
+end
 
-%Update locations in order to force to get same label and set smooth cost
-[grid, updatedCenters] = setSmoothCost(groupCluster, connection, grid, centers, displacement);
-
+%Set smoothCost
+smthCost = smoothCost;
+graph = graph * smthCost;
 
 %Alpha expansion code uses sparse matrix
-Sgrid = sparse(double(grid));
-
-%Set Smooth Cost matrix (label size X label size)
-%Potts Model
-smoothCost = ones(j1D * j1D,j1D * j1D);
-smoothCost(1:(j1D * j1D) + 1:(j1D * j1D) * (j1D * j1D)) = 0;
-
-%Truncated linear model
-% smoothCost = zeros(j1D * j1D,j1D * j1D);
-% fixCost = 3;
-% for i = 1 : j1D*j1D
-%     flag = 1;
-%     for j = i + 1 : j1D*j1D
-%         if (flag <= fixCost)
-%             smoothCost(i,j) = flag;
-%             flag = flag + 1;
-%         else
-%             smoothCost(i,j) = fixCost;
-%         end
-%     end
-% end
-% smoothCost = smoothCost + smoothCost';
+Sgrid = sparse(double(graph));
 
 %Set Label offset matrix
 labelSize = j1D * j1D;
@@ -249,14 +181,8 @@ offset = zeros(labelSize,2);
 
 %set offset values for feat(1,1)
 %Namely, finding offset values of assigning pixel(1,1) each jigsaw pixel.
-% index = 1; 
-% for i = 1 : j1D
-%     for j = 1 : j1D
-%         offset (index,1) = j;
-%         offset (index,2) = i;
-%         index = index + 1;
-%     end
-% end
+%Offset degerlerýnýn eksý olmasýnýn sebebi z=(s-label)mod|J|
+%Label cikarildigi icin eksi olunca arti oluyor degeri.
 index = 1; 
 for i = 1 : j1D
     for j = 1 : j1D
@@ -277,10 +203,9 @@ while (flag)
     fprintf(fileID,'%s\n',['###############   EM iteration nu:   ',num2str(em),'    #################']);
     %Set data cost matrix
     fprintf(fileID,'%s\n','setting data cost matrix');
-    dataCost = zeros (labelSize, featSize);
+    dataCost = zeros (labelSize, strokeSize);
     for i = 1 : labelSize
-        i
-        for j = 1 : featSize
+        for j = 1 : strokeSize
             %Convert offset value to jigsaw index
             IX = updatedCenters(j,1);
             IY = updatedCenters(j,2);
@@ -292,21 +217,20 @@ while (flag)
             if (jY == 0) 
                 jY = j1D;
             end
-            for k = 1 : ncol   
+            for k = 1 : featVectorSize   
                 if (jX < 0 || jX > j1D || jY < 0 || jY > j1D)
                     fprintf(fileID,'%s\n','index error');
                 end
                 dataCost(i,j) = (feat(j,k) - jMean(jX,jY,k))^2 + dataCost(i,j);
             end
-            dataCost(i,j) = dataCost(i,j);
             dataCost(i,j) = int32(floor(dataCost(i,j)));
-            dataCost(i,j) = int32(floor(dataCost(i,j))) * 50;
+            dataCost(i,j) = int32(floor(dataCost(i,j))) * dataFeatCost;
         end
     end
     
     %Create graph cut handle
     fprintf(fileID,'%s\n','Create grap cut handle');
-    h = GCO_Create(featSize,labelSize);
+    h = GCO_Create(strokeSize,labelSize);
     
     %Set data cost matrix for alpha expansion graph cut
     fprintf(fileID,'%s\n','setting data cost matrix');
@@ -353,8 +277,8 @@ while (flag)
     %Update Jigsaw mean
     fprintf(fileID,'%s\n','Updating jMean and jVar');
     jigsawLabel = zeros (j1D,j1D);
-    jigsawAssignedFeat = zeros (j1D,j1D,ncol);
-    for i = 1 : featSize
+    jigsawAssignedFeat = zeros (j1D,j1D,featVectorSize);
+    for i = 1 : strokeSize
         %Convert 1D pixel to image 2D index
         IX = updatedCenters(i,1);
         IY = updatedCenters(i,2);
@@ -367,15 +291,15 @@ while (flag)
             zY = j1D;
         end
         jigsawLabel(zX,zY) = jigsawLabel(zX,zY) + 1;
-         for j = 1 : ncol
+        for j = 1 : featVectorSize
             jigsawAssignedFeat(zX,zY,j) = jigsawAssignedFeat(zX,zY,j) + feat(i,j);
-         end
+        end
     end
     
     %Update Jigsaw mean
     for i = 1 : j1D
         for j = 1 : j1D
-            for k = 1 : ncol
+            for k = 1 : featVectorSize
                 if (jigsawLabel(i,j) > 0)
                     jMean(i,j,k) = ((jigsawAssignedFeat(i,j,k))) / (jigsawLabel(i,j));
                 else
@@ -390,108 +314,26 @@ while (flag)
     
     fprintf(fileID,'%s\n',['###############   EM iteration nu:   ',num2str(em),'  finished #################']);
     
-    %Find nodes assigned to same labels
-    sameLabels = find (jigsawLabel>1);
-    for i = 1 : size(sameLabels)
-        nodesAssignedtoSameLabels = find (label == sameLabels(i));
-    end
-    
     em = em + 1;
     label
 end
 
 fprintf(fileID,'%s\n','Job completed, pls check reconstructed image.');
-
-%Draw labels
-
-cd(jigsawPath);
-delete('*.jpg');
-uniqLabels = unique(label);
-subPlotNo = (j1D*j1D)+2;
-for i = 1: size(uniqLabels,1)
-    tmpLabels = find (label == uniqLabels(i));
-    hFig = figure(figNo);
-    figNo = figNo + 1;
-    set(hFig,'Position',[0, 0, 1300, 700]);
-    set(gca,'visible','off')
-    axis([0 1300 -700 0]);
-	figure(hFig);
-    hold on;
-    for j = 1 : size(tmpLabels)
-        plot(sketchXml(1,tmpLabels(j)).coords(:,1), -sketchXml(1,tmpLabels(j)).coords(:,2),'LineWidth',3);
-        txt1 = int2str(tmpLabels(j));
-        text((centers(tmpLabels(j),1)+15),-centers(tmpLabels(j),2)-5,txt1);
-    end
-    plotName = ['Label ',int2str(uniqLabels(i)),'.jpg'];
-    plotTitle = ['Label ',int2str(uniqLabels(i))];
-    title(plotTitle);
-    saveas(gcf,plotName);
-    hold off;
-    close(hFig);
-%     img = imread(plotName);
-%     hSFig = figure(subPlotNo);
-%     figure(hSFig);
-%     hold on;
-%     subplot(double(j1D),double(j1D),double(uniqLabels(i))), subimage(img);
-%     hold off;
-end
-
-%Get assigned jigsaw 
-jigsawPos = zeros(strokeSize,2);
-for i = 1 : strokeSize
-    jigsawPos(i,1) = mod ((updatedCenters(i,1) - offset (label(i),1)),j1D);
-    jigsawPos(i,2) = mod ((updatedCenters(i,2) - offset (label(i),2)),j1D);
-end
 fclose(fileID);
 
-%Reconstruction phase
-%Plot coordinates
-figNo = figNo + 1;
-set(gca,'visible','off')
-hFig = figure(figNo);
-figNo = figNo + 1;
-set(hFig,'Position',[0, 0, 700, 1300]);
-axis([0 1300 -700 0]);
-figure(hFig);
-hold on;
-for i = 1 : strokeSize
-    centerDisp(1,1) = updatedCenters(i,1) - centers(i,1);
-    centerDisp(1,2) = updatedCenters(i,2) - centers(i,2);
-    %Update x coordinates
-    sketchXml(1,i).coords(:,1) = sketchXml(1,i).coords(:,1) + centerDisp(1,1);
-    sketchXml(1,i).coords(:,2) = sketchXml(1,i).coords(:,2) + centerDisp(1,2);
-    plot(sketchXml(1,i).coords(:,1), -sketchXml(1,i).coords(:,2),'LineWidth',3);
-end
-hold off;
+%Draw strokes that are assigned to same label onto same figure
+%figNo = drawLabels( label, j1D, figNo, sketchXml, centers );
 
-%Draw jigsaw
-cd(jigsawImage);
-delete('*.jpg');
-for i = 1: j1D
-    for j = 1: j1D
-        [row,col] = find (jigsawPos(:,1) == mod(i,j1D) & jigsawPos(:,2) == mod(j,j1D));
-        if (size(row,1) > 0)
-            set(gca,'visible','off')
-                hFig = figure(figNo);
-            figNo = figNo + 1;
-            set(hFig,'Position',[0, 0, 700, 1300]);
-            axis([0 1300 -700 0]);
-            figure(hFig);
-            hold on;
-            for k = 1 : size(row,1)
-                plot(sketchXml(1,row(k)).coords(:,1), -sketchXml(1,row(k)).coords(:,2),'LineWidth',3);
-                txt1 = int2str(row(k));
-                text((centers(row(k),1)+15),-centers(row(k),2)-5,txt1,'FontSize',11,'FontWeight','bold');
-            end
-            
-            plotName = ['Jigsaw ',int2str(i),' ',int2str(j),'.jpg'];
-            plotTitle = ['Jigsaw ',int2str(i),' ',int2str(j)];
-            title(plotTitle);
-            saveas(gcf,plotName);
-            hold off;
-            close(hFig);
-        end
-    end
-end
+%Draw jigsaw. Draw strokes that are assigned to jigsaw position.
+cd(currentPath);
+[figNo, jigsawPos] = drawJigsaw( figNo, strokeSize, updatedCenters, label, j1D, sketchXml, centers, offset );
 
-%save('jigsawsketch.mat');
+%Reconstruction Phase
+cd(currentPath);
+[figNo, represent] = reconstruct( strokeSize, updatedCenters, label, offset, jMean, j1D, feat, featVectorSize, sketchXml, centers, figNo );
+
+%Get summary of assigned labels and jigsaw positions
+[ summaryMatrix, labelMatrix ] = getLabelandJigsawPos( groups, offset, label, jigsawPos, strokeSize, updatedCenters );
+
+%Save all variables
+save('jigsawsketch.mat');
