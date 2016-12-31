@@ -13,8 +13,11 @@ fprintf(fileID,'%s\n',date);
 
 %Sketch xml file is in this directory
 %dataPath = 'C:\Users\KARAMAN\Google Drive\RESEARCH\myResearch\Research\jigsawSketch\testData';
-dataPath = 'C:\Users\KARAMAN\Google Drive\RESEARCH\myResearch\Research\jigsawSketch\testData2';
+%dataPath = 'C:\Users\KARAMAN\Google Drive\RESEARCH\myResearch\Research\jigsawSketch\testData2';
 %dataPath = 'C:\Users\KARAMAN\Google Drive\RESEARCH\myResearch\Research\jigsawSketch\testData3';
+%dataPath = 'C:\Users\KARAMAN\Google Drive\RESEARCH\myResearch\Research\jigsawSketch\testData4';
+dataPath = 'C:\Users\KARAMAN\Google Drive\RESEARCH\myResearch\Research\jigsawSketch\testData5';
+%dataPath = 'C:\Users\KARAMAN\Google Drive\RESEARCH\myResearch\Research\jigsawSketch\testData6';
 currentPath = pwd;
 %Read stroke meta data from xml file
 fileXml = [dataPath,'\*.xml'];
@@ -47,6 +50,17 @@ centers = getCenters( strokeSize, sketchXml );
 figNo = 1;
 figNo = drawCanvas( sketchXml, centers, figNo );
 
+%Draw graph
+% %Set fully connected grid
+graphMatrix = (ones(strokeSize,strokeSize));
+%Set diagonal
+graphMatrix(1:strokeSize + 1:strokeSize * strokeSize) = 0;
+%Draw nodes on stroke centers
+%onCenter=1;
+%figNo = drawGraphNodes( graphMatrix,centers, sketchXml, figNo, onCenter);
+%Draw regular graph
+onCenter=0;
+figNo = drawGraphNodes( graphMatrix,centers, sketchXml, figNo, onCenter);
 %Get displacement between strokes
 displacement = getDisplacement( strokeSize, centers );
 
